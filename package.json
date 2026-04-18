@@ -1,0 +1,49 @@
+{
+  "name": "@dj_abstract/prompt-genesis",
+  "version": "0.1.0",
+  "description": "LLM-driven adversarial attack corpus generator for prompt-injection evaluation. Feeds prompt-eval with novel, category-tagged, judge-validated attacks.",
+  "type": "module",
+  "bin": {
+    "prompt-genesis": "bin/prompt-genesis.js"
+  },
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "start": "node bin/prompt-genesis.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abregoarthur-star/prompt-genesis.git"
+  },
+  "bugs": {
+    "url": "https://github.com/abregoarthur-star/prompt-genesis/issues"
+  },
+  "homepage": "https://github.com/abregoarthur-star/prompt-genesis#readme",
+  "keywords": [
+    "prompt-injection",
+    "ai-security",
+    "adversarial",
+    "fuzzer",
+    "corpus-generation",
+    "llm-security",
+    "red-team",
+    "prompt-eval",
+    "agent-security"
+  ],
+  "author": "Arthur Abrego",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.90.0"
+  }
+}

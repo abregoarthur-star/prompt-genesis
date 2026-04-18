@@ -1,0 +1,10 @@
+node_modules/
+*.log
+.DS_Store
+
+# Generated attack outputs — commit explicit snapshots elsewhere if needed
+new-attacks.json
+*.bak
+
+# Local smoke-test scratch
+.tmp/
