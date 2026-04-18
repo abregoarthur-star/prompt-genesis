@@ -25,18 +25,23 @@ import {
 
 const PACKAGE_VERSION = '0.2.0';
 
+// Canonical taxonomy. Source of truth for both the output schema enum
+// (what the generator is allowed to emit) and the fallback round-robin
+// when the caller doesn't pass --categories.
+const TAXONOMY_CATEGORIES = [
+  'direct-injection','system-prompt-extraction','role-hijack',
+  'prefix-injection','indirect-injection','encoding-tricks',
+  'information-leak','tool-coercion','refusal-bypass',
+  'delimiter-confusion','authority-claim',
+];
+
 const OUTPUT_SCHEMA = {
   type: 'json_schema',
   schema: {
     type: 'object',
     properties: {
       id:              { type: 'string' },
-      category:        { type: 'string', enum: [
-        'direct-injection','system-prompt-extraction','role-hijack',
-        'prefix-injection','indirect-injection','encoding-tricks',
-        'information-leak','tool-coercion','refusal-bypass',
-        'delimiter-confusion','authority-claim',
-      ]},
+      category:        { type: 'string', enum: TAXONOMY_CATEGORIES },
       severity:        { type: 'string', enum: ['critical','high','medium','low'] },
       name:            { type: 'string' },
       prompt:          { type: 'string' },
@@ -125,6 +130,11 @@ export async function generate({
 
   let categoryIdx = 0;
   let consecutiveRejects = 0;
+  // Name-collisions are tracked separately from other rejects. They signal
+  // the generator has converged within a category, not that generation is
+  // broken — round-robin advances us out naturally. Only terminate if the
+  // generator can't produce a novel name across an entire taxonomy pass × 2.
+  let consecutiveNameCollisions = 0;
 
   while (generated.length < count) {
     const totalUsd = genCosts.usd() + judgeCosts.usd();
@@ -134,8 +144,16 @@ export async function generate({
     if (consecutiveRejects >= 10) {
       return summarize({ generated, rejects, genCosts, judgeCosts, stoppedBy: 'too-many-consecutive-rejections' });
     }
+    if (consecutiveNameCollisions >= TAXONOMY_CATEGORIES.length * 2) {
+      return summarize({ generated, rejects, genCosts, judgeCosts, stoppedBy: 'name-collision-saturation' });
+    }
 
-    const category = categories ? pickCategoryRoundRobin(categories, categoryIdx) : null;
+    // Force server-side round-robin across all categories when the caller
+    // didn't restrict. Without this, the generator converges on a single
+    // attack family (biased by seed dominance or target-defense emphasis),
+    // which produces a non-diverse corpus and triggers name-collision loops.
+    const effectiveCategories = categories && categories.length > 0 ? categories : TAXONOMY_CATEGORIES;
+    const category = pickCategoryRoundRobin(effectiveCategories, categoryIdx);
     categoryIdx += 1;
 
     // If target-defense is active, pull a diverse sample of resisted
@@ -181,7 +199,7 @@ export async function generate({
     const collision = nameCollides(attack, pool);
     if (collision) {
       rejects.push({ reason: 'name-collision', matchedId: collision.id, category: attack.category, name: attack.name });
-      consecutiveRejects += 1;
+      consecutiveNameCollisions += 1;
       if (onProgress) onProgress({ type: 'reject', reason: 'name-collision', attack, matchedId: collision.id, costs: snapshotTotal(genCosts, judgeCosts) });
       continue;
     }
@@ -252,6 +270,7 @@ export async function generate({
     generated.push(stamped);
     pool.push(stamped);
     consecutiveRejects = 0;
+    consecutiveNameCollisions = 0;
 
     if (onProgress) onProgress({ type: 'accept', attack: stamped, costs: snapshotTotal(genCosts, judgeCosts) });
   }
