@@ -18,6 +18,9 @@ Generate options:
   --model <id>                Generator model override (default: claude-sonnet-4-6)
   --judge-model <id>          Quality-gate judge model (default: claude-haiku-4-5)
   --skip-judge                Skip the quality gate (faster, risks malformed attacks)
+  --target-defense <path>     Load a prompt-eval report JSON. Generated attacks will be
+                              steered to break defenses the target already demonstrated —
+                              "break what already works". Stamps inspiredByResisted provenance.
   --merge                     Merge into seed corpus and overwrite --seed (preserves original as .bak)
   --quiet                     Suppress per-attack progress
 
@@ -65,6 +68,24 @@ async function runGenerate(args) {
     `seed=${seedCorpus.length} · model=${opts.model || 'claude-sonnet-4-6'} · ` +
     `budget=$${maxCostUsd.toFixed(2)} · dedup>=${similarityThreshold}\n`,
   );
+  if (opts.targetDefense) {
+    // Peek at the report just to print the pre-run context; the generator
+    // will load it again internally.
+    try {
+      const { loadTargetReport, summarizeReport, extractResistedByCategory } =
+        await import('../src/target-defense.js');
+      const rpt = await loadTargetReport(opts.targetDefense);
+      const s = summarizeReport(rpt);
+      const resisted = extractResistedByCategory(rpt);
+      process.stderr.write(
+        `  target-defense mode: ${opts.targetDefense}\n` +
+        `  target=${s.target?.kind || '?'} · defenseRate=${(s.defenseRate * 100).toFixed(1)}% ` +
+        `· resisted=${s.resisted}/${s.total} across ${resisted.size} categories\n`,
+      );
+    } catch (e) {
+      process.stderr.write(`  target-defense: failed to preview report: ${e.message}\n`);
+    }
+  }
 
   const onProgress = opts.quiet ? null : ({ type, reason, attack, dupeCheck, matchedId, verdict, costs }) => {
     if (type === 'accept') {
@@ -88,6 +109,7 @@ async function runGenerate(args) {
     judgeModel: opts.judgeModel,
     skipJudge: opts.skipJudge,
     hint: opts.hint,
+    targetDefensePath: opts.targetDefense,
     onProgress,
   });
 
@@ -155,6 +177,7 @@ function parseArgs(args) {
       case '--model':                out.model = next(); break;
       case '--judge-model':          out.judgeModel = next(); break;
       case '--skip-judge':            out.skipJudge = true; break;
+      case '--target-defense':       out.targetDefense = next(); break;
       case '--merge':                out.merge = true; break;
       case '--quiet':                out.quiet = true; break;
       case '-h':

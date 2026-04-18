@@ -14,8 +14,16 @@ import { maxSimilarity } from './dedup.js';
 import { severityFor } from './severity-map.js';
 import { contentHashId } from './id.js';
 import { judge as qualityJudge } from './quality-gate.js';
+import {
+  loadTargetReport,
+  extractResistedByCategory,
+  sampleResistedForCategory,
+  buildTargetDefenseContext,
+  buildTargetDefenseUserPrompt,
+  summarizeReport,
+} from './target-defense.js';
 
-const PACKAGE_VERSION = '0.1.0';
+const PACKAGE_VERSION = '0.2.0';
 
 const OUTPUT_SCHEMA = {
   type: 'json_schema',
@@ -75,13 +83,36 @@ export async function generate({
   hint = null,
   onProgress = null,
   apiKey = null,
+  // --- target-defense mode (0.2.0) ---
+  // Path to a prompt-eval report JSON. When provided, the generator is
+  // steered toward novel attacks that target defenses the report shows
+  // actually hold — "break what already works".
+  targetDefensePath = null,
 }) {
   if (!Array.isArray(seedCorpus) || seedCorpus.length === 0) {
     throw new Error('seedCorpus must be a non-empty array');
   }
 
   const client = new Anthropic(apiKey ? { apiKey } : {});
-  const systemPromptText = buildSystemPrompt(seedCorpus);
+
+  // Target-defense context: loaded once per run, appended to the cached
+  // system prompt. Stable across the run → cache hits keep landing.
+  // Note: target-defense report is bound to the run's cache; mixing reports
+  // requires a fresh process.
+  let targetDefenseSummary = null;
+  let resistedByCategory = null;
+  let targetDefenseContext = '';
+  if (targetDefensePath) {
+    const report = await loadTargetReport(targetDefensePath);
+    targetDefenseSummary = summarizeReport(report);
+    // Cross-reference with seedCorpus — reports only carry id/category/name.
+    resistedByCategory = extractResistedByCategory(report, seedCorpus);
+    targetDefenseContext = buildTargetDefenseContext(report, resistedByCategory);
+  }
+
+  const systemPromptText = targetDefenseContext
+    ? `${buildSystemPrompt(seedCorpus)}\n\n${targetDefenseContext}`
+    : buildSystemPrompt(seedCorpus);
 
   // Cost tracker — generator model is dominant; judge calls on Haiku are
   // added separately but tracked under judgeModel pricing.
@@ -107,6 +138,17 @@ export async function generate({
     const category = categories ? pickCategoryRoundRobin(categories, categoryIdx) : null;
     categoryIdx += 1;
 
+    // If target-defense is active, pull a diverse sample of resisted
+    // attacks for this category to cite directly in the user prompt —
+    // tells the generator exactly which existing attacks to NOT paraphrase.
+    const resistedExamples = (resistedByCategory && category)
+      ? sampleResistedForCategory(resistedByCategory, category, 3)
+      : null;
+
+    const userPromptText = resistedByCategory
+      ? buildTargetDefenseUserPrompt({ category, resistedExamples, hint })
+      : buildUserPrompt({ category, hint });
+
     // --- Generate ---
     let response;
     try {
@@ -115,7 +157,7 @@ export async function generate({
         max_tokens: 2000,
         cache_control: { type: 'ephemeral' },
         system: [{ type: 'text', text: systemPromptText, cache_control: { type: 'ephemeral' } }],
-        messages: [{ role: 'user', content: buildUserPrompt({ category, hint }) }],
+        messages: [{ role: 'user', content: userPromptText }],
         output_config: { format: OUTPUT_SCHEMA },
       });
     } catch (err) {
@@ -198,6 +240,14 @@ export async function generate({
       judgeModel:      skipJudge ? null : judgeModel,
       judgeVerdict:    qualityVerdict?.verdict || null,
     };
+    // Target-defense provenance: record which resisted attacks inspired
+    // this generation so the attack's lineage is traceable.
+    if (targetDefensePath) {
+      stamped.targetDefenseSource = targetDefensePath;
+      stamped.defenderTarget      = targetDefenseSummary.target?.kind || 'unknown';
+      stamped.defenderDefenseRate = targetDefenseSummary.defenseRate;
+      stamped.inspiredByResisted  = (resistedExamples || []).map(a => a.id);
+    }
 
     generated.push(stamped);
     pool.push(stamped);

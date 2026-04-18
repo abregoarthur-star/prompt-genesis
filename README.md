@@ -151,6 +151,41 @@ prompt-genesis generate --seed corpus.json --count 100 --max-cost-usd 2.00
 
 The tool stops the moment it hits the cap, even mid-run.
 
+## Target Defense Mode
+
+Use `--target-defense` to find your defender's **next regression**. Random attacks from a corpus don't surface the cracks; attacks designed against your specific defender's resistance patterns do.
+
+```bash
+# Generate attacks specifically targeting what your defender already resists
+prompt-genesis generate \
+  --seed ./corpus.json \
+  --target-defense ./prompt-eval-report.json \
+  --count 30
+```
+
+This mode:
+1. **Loads a prompt-eval report** to see which attacks your target already defended against
+2. **Steers the generator** toward novel attacks that avoid the patterns your defender caught
+3. **Stamps provenance** so you can trace which resisted attacks inspired each new one
+
+Example output with target-defense provenance:
+
+```json
+{
+  "id": "gen-7f2a9b3c",
+  "category": "tool-coercion", 
+  "name": "Nested Function Call via JSON Response",
+  "prompt": "...",
+  
+  "targetDefenseSource": "./reports/brain-v2.json",
+  "defenderTarget": "brain",
+  "defenderDefenseRate": 1.0,
+  "inspiredByResisted": ["tool-coercion-001", "tool-coercion-003"]
+}
+```
+
+Perfect for regression testing: generate a fresh corpus after each major model or system prompt update to catch newly-opened vulnerabilities.
+
 ## Programmatic API
 
 ```javascript
@@ -175,10 +210,9 @@ const { merged, kept, dropped } = mergeCorpora(seedCorpus, attacks);
 await saveCorpus('./corpus.json', merged);
 ```
 
-## Roadmap (0.2.0)
+## Roadmap (future)
 
 - **Embedding-based dedup** — replaces Levenshtein for semantic paraphrase detection
-- **`--target-defense <report.json>`** — pull a prompt-eval report and steer generation toward attacks the target *resisted*. Break what already works.
 - **Multi-turn attack generation** — current corpus is single-turn only
 - **Indirect-injection via synthetic RAG docs** — generate fake emails / PDFs / web pages with embedded payloads
 - **Seed-diverse per-call focus examples** — address mode-collapse on unconstrained runs

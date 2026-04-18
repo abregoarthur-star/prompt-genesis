@@ -7,6 +7,14 @@ export { generate } from './generator.js';
 export { computeCostUsd, createCostTracker, priceFor } from './cost.js';
 export { similarity, maxSimilarity } from './dedup.js';
 export { buildSystemPrompt, buildUserPrompt, TAXONOMY } from './prompts.js';
+export {
+  loadTargetReport,
+  summarizeReport,
+  extractResistedByCategory,
+  sampleResistedForCategory,
+  buildTargetDefenseContext,
+  buildTargetDefenseUserPrompt,
+} from './target-defense.js';
 
 export async function loadCorpus(path) {
   const raw = await readFile(path, 'utf8');
