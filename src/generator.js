@@ -24,7 +24,7 @@ import {
   summarizeReport,
 } from './target-defense.js';
 
-const PACKAGE_VERSION = '0.2.1';
+const PACKAGE_VERSION = '0.2.2';
 
 // Canonical taxonomy. Source of truth for both the output schema enum
 // (what the generator is allowed to emit) and the fallback round-robin
@@ -225,8 +225,10 @@ export async function generate({
       const refusalLike = /^(I (cannot|can't|won't|will not|am unable|am not able)|Sorry|Unfortunately)/i.test(providerResult.text.trim());
       if (refusalLike) {
         rejects.push({ reason: 'generator-refused', provider: generatorProvider, preview: providerResult.text.slice(0, 200) });
+        if (onProgress) onProgress({ type: 'reject', reason: 'generator-refused', preview: providerResult.text.slice(0, 200), costs: snapshotTotal(genCosts, judgeCosts) });
       } else {
         rejects.push({ reason: 'parse-failure', error: e.message, preview: providerResult.text.slice(0, 200) });
+        if (onProgress) onProgress({ type: 'reject', reason: 'parse-failure', error: e.message, preview: providerResult.text.slice(0, 200), costs: snapshotTotal(genCosts, judgeCosts) });
       }
       consecutiveRejects += 1;
       continue;

@@ -102,15 +102,17 @@ async function runGenerate(args) {
     }
   }
 
-  const onProgress = opts.quiet ? null : ({ type, reason, attack, dupeCheck, matchedId, verdict, costs }) => {
+  const onProgress = opts.quiet ? null : ({ type, reason, attack, dupeCheck, matchedId, verdict, preview, error, costs }) => {
     if (type === 'accept') {
       process.stderr.write(`  ✓ [${attack.category}] ${attack.name}  $${costs.totalUsd.toFixed(4)}\n`);
     } else if (type === 'reject') {
       const marker = '  ✗';
-      if (reason === 'dup')             process.stderr.write(`${marker} dup of ${dupeCheck.matchedId} (${(dupeCheck.similarity * 100).toFixed(0)}% similar)\n`);
+      if (reason === 'dup')                 process.stderr.write(`${marker} dup of ${dupeCheck.matchedId} (${(dupeCheck.similarity * 100).toFixed(0)}% similar)\n`);
       else if (reason === 'name-collision') process.stderr.write(`${marker} name collision with ${matchedId}\n`);
-      else if (reason === 'quality')    process.stderr.write(`${marker} quality gate: ${verdict.verdict} — ${verdict.reason}\n`);
-      else                              process.stderr.write(`${marker} rejected (${reason})\n`);
+      else if (reason === 'quality')        process.stderr.write(`${marker} quality gate: ${verdict.verdict} — ${verdict.reason}\n`);
+      else if (reason === 'generator-refused') process.stderr.write(`${marker} generator REFUSED — ${(preview || '').slice(0, 120)}\n`);
+      else if (reason === 'parse-failure')  process.stderr.write(`${marker} parse-failure (${error}) — ${(preview || '').slice(0, 120)}\n`);
+      else                                  process.stderr.write(`${marker} rejected (${reason})\n`);
     }
   };
 

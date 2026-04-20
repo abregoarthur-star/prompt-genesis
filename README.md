@@ -151,6 +151,70 @@ prompt-genesis generate --seed corpus.json --count 100 --max-cost-usd 2.00
 
 The tool stops the moment it hits the cap, even mid-run.
 
+## Multi-provider generators
+
+Use `--model <provider>:<id>` to route generation through a non-Anthropic backend. Bare model IDs (no prefix) default to Anthropic for backward compatibility.
+
+```bash
+# Default — Anthropic Claude Sonnet 4.6
+prompt-genesis generate --seed corpus.json --count 30
+
+# Groq Llama 3.3 70B
+prompt-genesis generate --seed corpus.json --count 30 \
+  --model groq:llama-3.3-70b-versatile
+
+# Groq Llama 4 Scout 17B (broader daily quota on Groq free tier)
+prompt-genesis generate --seed corpus.json --count 30 \
+  --model "groq:meta-llama/llama-4-scout-17b-16e-instruct"
+```
+
+The judge stays on Anthropic Haiku regardless of generator provider — judge consistency is more important than judge cost, and cross-provider judge variance would corrupt comparisons.
+
+### Why multi-provider matters: generator-defender architectural affinity
+
+Cross-provider testing isn't (just) about RLHF coverage gaps. The bigger finding from the 0.3.0 work:
+
+> **Open-weights generators produce attacks that compromise open-weights defenders 1.36× more often than Claude-generated attacks** (n=30 per generator, evaluated against the same Llama 3.1 8B Instant defender).
+
+| Generator | Compromise rate vs Llama 3.1 8B |
+|-----------|----------------------------------|
+| Claude Sonnet 4.6 | 11/30 = 37% |
+| Llama 4 Scout 17B | 15/30 = 50% |
+| **Ratio** | **1.36×** |
+
+To find your specific defender's actual blind spots, the generator should match the defender's family, not the security researcher's preference. Multi-provider isn't a nice-to-have for thorough testing — it's required.
+
+### Cost differential (Groq vs Anthropic)
+
+Generating the same n=30 corpus with the new multi-provider syntax:
+
+| Generator | Cost |
+|-----------|------|
+| Claude Sonnet 4.6 (Anthropic) | $0.258 |
+| Llama 4 Scout 17B (Groq) | $0.062 |
+
+~4× cheaper on Groq. Useful for large bulk-generation runs once you've decided which provider matches your defender.
+
+### Required env vars
+
+| Provider | Env var |
+|----------|---------|
+| Anthropic (default + judge) | `ANTHROPIC_API_KEY` |
+| Groq | `GROQ_API_KEY` |
+
+`ANTHROPIC_API_KEY` is always required (the quality-gate judge runs on Anthropic Haiku regardless of generator).
+
+### Supported models
+
+| Provider:Model | Pricing (per 1M input/output) | Notes |
+|----------------|-------------------------------|-------|
+| `claude-sonnet-4-6` (default) | $3 / $15 | Best quality, prompt caching |
+| `claude-opus-4-7` | $5 / $25 | Higher capability |
+| `claude-haiku-4-5` | $1 / $5 | Cheap Anthropic |
+| `groq:llama-3.3-70b-versatile` | $0.59 / $0.79 | Llama 3.3 70B (Groq TPD limited on free tier) |
+| `groq:llama-3.1-8b-instant` | $0.05 / $0.08 | Smallest Llama (TPM-limited on free tier — 38-seed corpus may exceed) |
+| `groq:meta-llama/llama-4-scout-17b-16e-instruct` | $0.18 / $0.59 | Llama 4 Scout (recommended for Groq runs at free tier) |
+
 ## Target Defense Mode
 
 Use `--target-defense` to generate attacks steered against patterns your defender already resists. Combine with `recommend-categories` (below) so the tool tells you **which categories to actually trust it on**.
