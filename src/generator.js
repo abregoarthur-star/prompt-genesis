@@ -24,7 +24,7 @@ import {
   summarizeReport,
 } from './target-defense.js';
 
-const PACKAGE_VERSION = '0.2.2';
+const PACKAGE_VERSION = '0.3.0';
 
 // Canonical taxonomy. Source of truth for both the output schema enum
 // (what the generator is allowed to emit) and the fallback round-robin
@@ -100,6 +100,11 @@ export async function generate({
   // steered toward novel attacks that target defenses the report shows
   // actually hold — "break what already works".
   targetDefensePath = null,
+  // In-memory alternative to targetDefensePath, for self-test orchestration
+  // that has the report in hand and doesn't want to round-trip through disk.
+  // Mutually exclusive with targetDefensePath; if both supplied, the in-memory
+  // report wins.
+  targetDefenseReport = null,
 }) {
   if (!Array.isArray(seedCorpus) || seedCorpus.length === 0) {
     throw new Error('seedCorpus must be a non-empty array');
@@ -125,8 +130,8 @@ export async function generate({
   let targetDefenseSummary = null;
   let resistedByCategory = null;
   let targetDefenseContext = '';
-  if (targetDefensePath) {
-    const report = await loadTargetReport(targetDefensePath);
+  if (targetDefenseReport || targetDefensePath) {
+    const report = targetDefenseReport || await loadTargetReport(targetDefensePath);
     targetDefenseSummary = summarizeReport(report);
     // Cross-reference with seedCorpus — reports only carry id/category/name.
     resistedByCategory = extractResistedByCategory(report, seedCorpus);
@@ -299,8 +304,8 @@ export async function generate({
     };
     // Target-defense provenance: record which resisted attacks inspired
     // this generation so the attack's lineage is traceable.
-    if (targetDefensePath) {
-      stamped.targetDefenseSource = targetDefensePath;
+    if (targetDefenseReport || targetDefensePath) {
+      stamped.targetDefenseSource = targetDefensePath || '<in-memory report>';
       stamped.defenderTarget      = targetDefenseSummary.target?.kind || 'unknown';
       stamped.defenderDefenseRate = targetDefenseSummary.defenseRate;
       stamped.inspiredByResisted  = (resistedExamples || []).map(a => a.id);

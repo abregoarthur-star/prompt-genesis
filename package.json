@@ -1,6 +1,6 @@
 {
   "name": "@dj_abstract/prompt-genesis",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "LLM-driven adversarial attack corpus generator for prompt-injection evaluation. Feeds prompt-eval with novel, category-tagged, judge-validated attacks.",
   "type": "module",
   "bin": {
@@ -44,6 +44,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.90.0"
+    "@anthropic-ai/sdk": "^0.90.0",
+    "@dj_abstract/prompt-eval": "^0.3.0"
   }
 }

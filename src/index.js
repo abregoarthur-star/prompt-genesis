@@ -21,6 +21,7 @@ export {
   recommend,
   formatRecommendation,
 } from './recommend.js';
+export { selfTest } from './self-test.js';
 
 export async function loadCorpus(path) {
   const raw = await readFile(path, 'utf8');
