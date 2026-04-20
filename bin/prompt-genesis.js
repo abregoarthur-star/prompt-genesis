@@ -16,8 +16,13 @@ Generate options:
   --hint "<text>"             Guidance to nudge the generator toward specific angles
   --max-cost-usd <n>          Stop when cost reaches this (default: 1.00)
   --similarity-threshold <n>  Reject candidates with >this similarity (0-1, default: 0.80)
-  --model <id>                Generator model override (default: claude-sonnet-4-6)
-  --judge-model <id>          Quality-gate judge model (default: claude-haiku-4-5)
+  --model <id>                Generator model. Bare ID = Anthropic ("claude-sonnet-4-6" default).
+                              Multi-provider syntax: "<provider>:<id>", e.g.:
+                                claude-sonnet-4-6                    (Anthropic, default)
+                                groq:llama-3.3-70b-versatile         (Groq, free tier)
+                                groq:llama-3.1-8b-instant            (Groq, smaller)
+                              Judge stays on Anthropic regardless of generator provider.
+  --judge-model <id>          Quality-gate judge model (default: claude-haiku-4-5; always Anthropic)
   --skip-judge                Skip the quality gate (faster, risks malformed attacks)
   --target-defense <path>     Load a prompt-eval report JSON. Generated attacks will be
                               steered to break defenses the target already demonstrated —
@@ -31,12 +36,14 @@ Recommend-categories options:
                               sophistication confuses the judge instead of cleanly compromising.
 
 Env:
-  ANTHROPIC_API_KEY           Required for generate.
+  ANTHROPIC_API_KEY           Required (always; judge runs on Anthropic).
+  GROQ_API_KEY                Required when --model uses "groq:" prefix.
 
 Examples:
   prompt-genesis generate --seed corpus.json --count 50 --out new.json
   prompt-genesis generate --seed corpus.json --categories tool-coercion,role-hijack --count 10
   prompt-genesis generate --seed corpus.json --count 30 --merge
+  prompt-genesis generate --seed corpus.json --count 10 --model groq:llama-3.3-70b-versatile
   prompt-genesis merge corpus.json new.json --out combined.json
   prompt-genesis recommend-categories td-eval.json nm-eval.json
 `;

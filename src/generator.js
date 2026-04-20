@@ -14,6 +14,7 @@ import { maxSimilarity } from './dedup.js';
 import { severityFor } from './severity-map.js';
 import { contentHashId } from './id.js';
 import { judge as qualityJudge } from './quality-gate.js';
+import { generate as providerGenerate, parseModelSpec, apiKeyFor } from './providers/index.js';
 import {
   loadTargetReport,
   extractResistedByCategory,
@@ -58,11 +59,17 @@ function pickCategoryRoundRobin(categories, index) {
   return categories[index % categories.length];
 }
 
-function extractJson(message) {
-  const block = message.content.find(b => b.type === 'text');
-  if (!block) throw new Error('No text block in response');
-  const text = block.text.trim();
-  const stripped = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+function extractJsonFromText(text) {
+  if (!text) throw new Error('Empty response from provider');
+  const trimmed = text.trim();
+  // Strip Markdown code fences if present (some non-Anthropic providers
+  // return ```json ... ``` even with response_format: json_object).
+  const stripped = trimmed.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+  // If still not pure JSON, try to extract the first {...} block.
+  if (!stripped.startsWith('{')) {
+    const m = stripped.match(/\{[\s\S]*\}/);
+    if (m) return JSON.parse(m[0]);
+  }
   return JSON.parse(stripped);
 }
 
@@ -98,7 +105,18 @@ export async function generate({
     throw new Error('seedCorpus must be a non-empty array');
   }
 
-  const client = new Anthropic(apiKey ? { apiKey } : {});
+  // Resolve which provider the caller asked for so we can pull the right
+  // API key from env. Bare model IDs default to Anthropic for backward
+  // compatibility; "groq:..." prefix routes to the Groq provider for the
+  // cross-provider refusal-rate experiment. The dispatcher does its own
+  // parse on the full spec — we only parse here to pick the API key.
+  const { provider: generatorProvider } = parseModelSpec(model);
+  const generatorApiKey = apiKeyFor(generatorProvider, apiKey);
+
+  // Judge stays on Anthropic regardless of generator provider — judge
+  // consistency is more important than judge cost, and Haiku is the
+  // cheapest reliable judge available.
+  const client = new Anthropic({});
 
   // Target-defense context: loaded once per run, appended to the cached
   // system prompt. Stable across the run → cache hits keep landing.
@@ -168,29 +186,48 @@ export async function generate({
       : buildUserPrompt({ category, hint });
 
     // --- Generate ---
-    let response;
+    // Dispatched to the chosen provider (anthropic | groq). Anthropic uses
+    // structured-output schema enforcement; Groq uses response_format json_object
+    // with the schema described in the system prompt and downstream quality
+    // gate as a backstop.
+    let providerResult;
     try {
-      response = await client.messages.create({
-        model,
-        max_tokens: 2000,
-        cache_control: { type: 'ephemeral' },
-        system: [{ type: 'text', text: systemPromptText, cache_control: { type: 'ephemeral' } }],
-        messages: [{ role: 'user', content: userPromptText }],
-        output_config: { format: OUTPUT_SCHEMA },
+      providerResult = await providerGenerate({
+        apiKey: generatorApiKey,
+        model,  // pass the full spec; dispatcher strips the prefix once
+        systemPrompt: systemPromptText,
+        userPrompt: userPromptText,
+        maxTokens: 2000,
+        schema: OUTPUT_SCHEMA,
       });
     } catch (err) {
-      if (err instanceof Anthropic.AuthenticationError) {
-        throw new Error('Anthropic API key invalid or missing. Set ANTHROPIC_API_KEY.');
+      // Generator-side refusal detection. Some providers (Llama 3.x in particular)
+      // refuse certain attack categories at the API layer rather than producing
+      // a malformed JSON. Surface as a distinct reject reason so the cross-provider
+      // refusal-rate experiment can count them.
+      const msg = String(err.message || err);
+      if (/refus|cannot|won't|will not|unable to/i.test(msg)) {
+        rejects.push({ reason: 'generator-refused', provider: generatorProvider, error: msg.slice(0, 200) });
+        consecutiveRejects += 1;
+        if (onProgress) onProgress({ type: 'reject', reason: 'generator-refused', costs: snapshotTotal(genCosts, judgeCosts) });
+        continue;
       }
-      throw err; // 429/5xx: SDK already retried; let caller surface.
+      throw err;
     }
-    genCosts.add(response.usage || {});
+    genCosts.add(providerResult.usage || {});
 
     let attack;
     try {
-      attack = extractJson(response);
+      attack = extractJsonFromText(providerResult.text);
     } catch (e) {
-      rejects.push({ reason: 'parse-failure', error: e.message });
+      // Soft-refusal: provider returned text instead of JSON, often a refusal
+      // ("I can't help with that") rather than a parse error per se.
+      const refusalLike = /^(I (cannot|can't|won't|will not|am unable|am not able)|Sorry|Unfortunately)/i.test(providerResult.text.trim());
+      if (refusalLike) {
+        rejects.push({ reason: 'generator-refused', provider: generatorProvider, preview: providerResult.text.slice(0, 200) });
+      } else {
+        rejects.push({ reason: 'parse-failure', error: e.message, preview: providerResult.text.slice(0, 200) });
+      }
       consecutiveRejects += 1;
       continue;
     }
