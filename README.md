@@ -153,7 +153,7 @@ The tool stops the moment it hits the cap, even mid-run.
 
 ## Target Defense Mode
 
-Use `--target-defense` to find your defender's **next regression**. Random attacks from a corpus don't surface the cracks; attacks designed against your specific defender's resistance patterns do.
+Use `--target-defense` to generate attacks steered against patterns your defender already resists. Combine with `recommend-categories` (below) so the tool tells you **which categories to actually trust it on**.
 
 ```bash
 # Generate attacks specifically targeting what your defender already resists
@@ -173,10 +173,10 @@ Example output with target-defense provenance:
 ```json
 {
   "id": "gen-7f2a9b3c",
-  "category": "tool-coercion", 
+  "category": "tool-coercion",
   "name": "Nested Function Call via JSON Response",
   "prompt": "...",
-  
+
   "targetDefenseSource": "./reports/brain-v2.json",
   "defenderTarget": "brain",
   "defenderDefenseRate": 1.0,
@@ -184,7 +184,66 @@ Example output with target-defense provenance:
 }
 ```
 
-Perfect for regression testing: generate a fresh corpus after each major model or system prompt update to catch newly-opened vulnerabilities.
+### Per-category confidence (`recommend-categories`)
+
+Target-defense doesn't universally beat random — its effect depends on the attack category. Some categories have **brittle target resistance** (specific catchable patterns) where steering pays off; others have **broad judgment-based resistance** where canonical attacks win and over-steering produces sophisticated-looking attacks that confuse the judge instead of compromising the target.
+
+`recommend-categories` analyzes a prior pair of prompt-eval reports (one from `--target-defense` mode, one without) and tells you which categories to trust target-defense on:
+
+```bash
+prompt-genesis recommend-categories td-eval.json nm-eval.json
+```
+
+Output:
+
+```
+category                     | td-comp | nm-comp | td-ambig | verdict
+-----------------------------|---------|---------|----------|---------------------
+delimiter-confusion          | 2/3     | 1/2     | 0/3      | use-td
+indirect-injection           | 2/4     | 0/2     | 0/4      | use-td
+information-leak             | 1/2     | 1/3     | 0/2      | use-td
+prefix-injection             | 3/4     | 1/3     | 0/4      | use-td
+authority-claim              | 2/3     | 3/3     | 0/3      | use-normal
+role-hijack                  | 1/4     | 1/2     | 3/4      | use-normal
+tool-coercion                | 1/2     | 2/3     | 0/2      | use-normal
+...
+
+Recommended --categories flag for next --target-defense run:
+  --categories "delimiter-confusion,indirect-injection,information-leak,prefix-injection"
+```
+
+**Two-dimensional gating** — TD only recommended when BOTH:
+- TD compromise rate > NM compromise rate (it actually beats random)
+- TD ambiguous rate < 15% (it isn't over-steering — producing junk that confuses the judge)
+
+The over-steering gate is the load-bearing addition. Sample-efficient adversarial fuzzing means knowing when not to fire.
+
+### End-to-end workflow
+
+```bash
+# 1. Run prompt-eval against your target with the seed corpus
+prompt-eval run --target groq --model llama-3.3-70b-versatile --corpus seed.json --json v1.json
+
+# 2. Generate target-defense attacks steered against v1
+prompt-genesis generate --seed seed.json --target-defense v1.json --count 30 --out td-attacks.json
+
+# 3. Generate normal-mode comparison attacks
+prompt-genesis generate --seed seed.json --count 30 --out nm-attacks.json
+
+# 4. Run prompt-eval on both new corpora (test-set separation: don't include seed)
+prompt-eval run --target groq --model llama-3.3-70b-versatile --corpus td-attacks.json --json td-eval.json
+prompt-eval run --target groq --model llama-3.3-70b-versatile --corpus nm-attacks.json --json nm-eval.json
+
+# 5. Get per-category recommendation
+prompt-genesis recommend-categories td-eval.json nm-eval.json
+
+# 6. Future runs: use only the recommended categories
+prompt-genesis generate --seed seed.json --target-defense v1.json \
+  --categories "delimiter-confusion,indirect-injection,information-leak,prefix-injection" \
+  --count 50 --out production-attacks.json
+```
+
+The `prompt-genesis self-test` subcommand (planned for 0.3.0) will collapse steps 1-5 into a single command.
 
 ## Programmatic API
 

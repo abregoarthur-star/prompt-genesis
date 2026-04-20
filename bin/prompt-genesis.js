@@ -6,6 +6,7 @@ const HELP = `prompt-genesis — adversarial attack corpus generator for prompt-
 Usage:
   prompt-genesis generate --seed <corpus.json> [options]
   prompt-genesis merge <base.json> <incoming.json> [--out combined.json]
+  prompt-genesis recommend-categories <td-eval.json> <nm-eval.json> [--ambiguous-max 0.15]
 
 Generate options:
   --seed <path>               Seed corpus (required). JSON array matching prompt-eval's schema.
@@ -24,14 +25,20 @@ Generate options:
   --merge                     Merge into seed corpus and overwrite --seed (preserves original as .bak)
   --quiet                     Suppress per-attack progress
 
+Recommend-categories options:
+  --ambiguous-max <n>         Max TD ambiguous rate before flagging "over-steering" (default 0.15).
+                              The over-steering gate catches a failure mode where target-defense's
+                              sophistication confuses the judge instead of cleanly compromising.
+
 Env:
-  ANTHROPIC_API_KEY           Required.
+  ANTHROPIC_API_KEY           Required for generate.
 
 Examples:
   prompt-genesis generate --seed corpus.json --count 50 --out new.json
   prompt-genesis generate --seed corpus.json --categories tool-coercion,role-hijack --count 10
   prompt-genesis generate --seed corpus.json --count 30 --merge
   prompt-genesis merge corpus.json new.json --out combined.json
+  prompt-genesis recommend-categories td-eval.json nm-eval.json
 `;
 
 async function main() {
@@ -42,8 +49,9 @@ async function main() {
   }
 
   const cmd = argv[0];
-  if (cmd === 'generate') return runGenerate(argv.slice(1));
-  if (cmd === 'merge')    return runMerge(argv.slice(1));
+  if (cmd === 'generate')              return runGenerate(argv.slice(1));
+  if (cmd === 'merge')                 return runMerge(argv.slice(1));
+  if (cmd === 'recommend-categories')  return runRecommendCategories(argv.slice(1));
 
   process.stderr.write(`Unknown command: ${cmd}\n\n${HELP}`);
   process.exit(2);
@@ -142,6 +150,21 @@ async function runGenerate(args) {
   }
 }
 
+async function runRecommendCategories(args) {
+  const opts = parseArgs(args);
+  const [tdPath, nmPath] = opts._;
+  if (!tdPath || !nmPath) {
+    process.stderr.write('recommend-categories requires two positional args: <td-eval.json> <nm-eval.json>\n');
+    process.exit(2);
+  }
+  const ambiguousMaxRate = opts.ambiguousMax ? Number.parseFloat(opts.ambiguousMax) : 0.15;
+  const { loadEvalReport, recommend, formatRecommendation } = await import('../src/recommend.js');
+  const tdReport = await loadEvalReport(tdPath);
+  const nmReport = await loadEvalReport(nmPath);
+  const result = recommend(tdReport, nmReport, { ambiguousMaxRate });
+  process.stdout.write(formatRecommendation(result) + '\n');
+}
+
 async function runMerge(args) {
   const opts = parseArgs(args);
   const [basePath, incomingPath] = opts._;
@@ -178,6 +201,7 @@ function parseArgs(args) {
       case '--judge-model':          out.judgeModel = next(); break;
       case '--skip-judge':            out.skipJudge = true; break;
       case '--target-defense':       out.targetDefense = next(); break;
+      case '--ambiguous-max':        out.ambiguousMax = next(); break;
       case '--merge':                out.merge = true; break;
       case '--quiet':                out.quiet = true; break;
       case '-h':

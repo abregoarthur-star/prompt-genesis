@@ -23,7 +23,7 @@ import {
   summarizeReport,
 } from './target-defense.js';
 
-const PACKAGE_VERSION = '0.2.0';
+const PACKAGE_VERSION = '0.2.1';
 
 // Canonical taxonomy. Source of truth for both the output schema enum
 // (what the generator is allowed to emit) and the fallback round-robin

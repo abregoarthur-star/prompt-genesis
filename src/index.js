@@ -15,6 +15,12 @@ export {
   buildTargetDefenseContext,
   buildTargetDefenseUserPrompt,
 } from './target-defense.js';
+export {
+  loadEvalReport,
+  categoryStats,
+  recommend,
+  formatRecommendation,
+} from './recommend.js';
 
 export async function loadCorpus(path) {
   const raw = await readFile(path, 'utf8');
