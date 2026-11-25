@@ -22,6 +22,7 @@
 import { runEval, makeTarget, claudeJudge } from '@dj_abstract/prompt-eval';
 import { generate as generateAttacks } from './generator.js';
 import { recommend } from './recommend.js';
+import { computeCostUsd } from './cost.js';
 
 // Locked decision criteria from Addendum 2 #2 / Arthur's 2026-04-18 table.
 // Hard-coded so future runs can't accidentally relax them post-hoc.
@@ -34,15 +35,15 @@ export async function selfTest({
   // --- Required ---
   // Target spec — same shape as prompt-eval's makeTarget. Examples:
   //   { kind: 'groq', model: 'llama-3.1-8b-instant', systemPrompt: '...' }
-  //   { kind: 'anthropic', model: 'claude-sonnet-4-6', systemPrompt: '...' }
+  //   { kind: 'anthropic', model: 'claude-sonnet-5-5', systemPrompt: '...' }
   //   { kind: 'http', url: '...', bodyKey: 'prompt', responseKey: 'response' }
   target,
   seedCorpus,                                 // non-empty array
   // --- Optional with sensible defaults ---
   rounds = 30,                                // attacks per mode (n=30 minimum per Addendum 6)
-  generatorModel = 'claude-sonnet-4-6',       // bare or 'provider:id' (e.g., 'groq:llama-3.3-70b-versatile')
+  generatorModel = 'claude-sonnet-5-5',      // bare or 'provider:id' (e.g., 'groq:llama-3.3-70b-versatile')
   generatorApiKey = null,
-  judgeModel = 'claude-haiku-4-5',
+  judgeModel = 'claude-haiku-5-5',
   judgeApiKey = null,
   maxCostUsdPerGen = 1.50,                    // budget per generation phase (TD + NM)
   similarityThreshold = 0.80,
@@ -179,12 +180,29 @@ export async function selfTest({
       td: { attacks: tdGen.attacks.length, rejects: tdGen.rejects.length, costUsd: tdGen.cost.totalUsd, stoppedBy: tdGen.stoppedBy },
       nm: { attacks: nmGen.attacks.length, rejects: nmGen.rejects.length, costUsd: nmGen.cost.totalUsd, stoppedBy: nmGen.stoppedBy },
     },
+    // Cost of the three eval passes (baseline, TD, NM): target calls priced at
+    // the target's model, judge calls at the judge's. A target that reports no
+    // token usage (http, brain) contributes 0 — its owner pays for it.
+    evaluation: evaluationCost([baseline, tdEval, nmEval], target.model, judgeModel),
     target: { kind: target.kind, model: target.model, systemPrompt: target.systemPrompt },
     runAt: new Date().toISOString(),
   };
 
   if (onProgress) onProgress({ phase: 'done', decision, ratio: result.ratio });
   return result;
+}
+
+function evaluationCost(reports, targetModel, judgeModel) {
+  let targetUsd = 0, judgeUsd = 0, targetCalls = 0, judgeCalls = 0;
+  for (const r of reports) {
+    const u = r.usage;
+    if (!u) continue;
+    targetUsd += computeCostUsd(targetModel, u.target);
+    judgeUsd += computeCostUsd(judgeModel, u.judge);
+    targetCalls += u.target.calls;
+    judgeCalls += u.judge.calls;
+  }
+  return { costUsd: targetUsd + judgeUsd, targetUsd, judgeUsd, targetCalls, judgeCalls };
 }
 
 function countCompromised(report) {

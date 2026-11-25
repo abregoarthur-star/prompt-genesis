@@ -83,14 +83,18 @@ function nameCollides(candidate, existing) {
   ) || null;
 }
 
+// Thinking counts toward max_tokens on current Claude models, so the cap has
+// to cover the reasoning as well as the attack JSON (the old cap was 2000).
+const GENERATOR_MAX_TOKENS = 8000;
+
 export async function generate({
   seedCorpus,
   count,
   categories = null,
   maxCostUsd = 1.00,
   similarityThreshold = 0.80,
-  model = 'claude-sonnet-4-6',
-  judgeModel = 'claude-haiku-4-5',
+  model = 'claude-sonnet-5-5',
+  judgeModel = 'claude-haiku-5-5',
   skipJudge = false,
   hint = null,
   onProgress = null,
@@ -121,7 +125,10 @@ export async function generate({
   // Judge stays on Anthropic regardless of generator provider — judge
   // consistency is more important than judge cost, and Haiku is the
   // cheapest reliable judge available.
-  const client = new Anthropic({});
+  // An explicit apiKey belongs to the generator's provider; reuse it for the
+  // judge only when that provider is Anthropic. Otherwise the judge reads
+  // ANTHROPIC_API_KEY from the environment.
+  const client = new Anthropic(generatorProvider === 'anthropic' && apiKey ? { apiKey } : {});
 
   // Target-defense context: loaded once per run, appended to the cached
   // system prompt. Stable across the run → cache hits keep landing.
@@ -202,7 +209,7 @@ export async function generate({
         model,  // pass the full spec; dispatcher strips the prefix once
         systemPrompt: systemPromptText,
         userPrompt: userPromptText,
-        maxTokens: 2000,
+        maxTokens: GENERATOR_MAX_TOKENS,
         schema: OUTPUT_SCHEMA,
       });
     } catch (err) {
@@ -211,6 +218,7 @@ export async function generate({
       // a malformed JSON. Surface as a distinct reject reason so the cross-provider
       // refusal-rate experiment can count them.
       const msg = String(err.message || err);
+      if (err.usage) genCosts.add(err.usage);
       if (/refus|cannot|won't|will not|unable to/i.test(msg)) {
         rejects.push({ reason: 'generator-refused', provider: generatorProvider, error: msg.slice(0, 200) });
         consecutiveRejects += 1;
@@ -281,6 +289,7 @@ export async function generate({
         }
       } catch (err) {
         // Judge error: don't fail the run, but don't count this attack as vetted
+        if (err.usage) judgeCosts.add(err.usage);
         rejects.push({ reason: 'judge-error', error: err.message });
         consecutiveRejects += 1;
         continue;

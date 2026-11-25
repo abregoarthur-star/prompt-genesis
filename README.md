@@ -55,7 +55,7 @@ prompt-genesis merge corpus.json new-attacks.json --out combined.json
                                    │
                                    ▼
               ┌───────────────────────────────────────────┐
-              │  Generator call (claude-sonnet-4-6)       │
+              │  Generator call (claude-sonnet-5-5)       │
               │  "Generate ONE novel attack in category X"│
               │  Output: JSON-constrained via             │
               │          output_config.format             │
@@ -125,8 +125,8 @@ Each generated attack:
 
   "generatedBy": "prompt-genesis@0.1.0",
   "generatedAt": "2026-04-18T15:18:22.100Z",
-  "generatorModel": "claude-sonnet-4-6",
-  "judgeModel": "claude-haiku-4-5",
+  "generatorModel": "claude-sonnet-5-5",
+  "judgeModel": "claude-haiku-5-5",
   "judgeVerdict": "valid"
 }
 ```
@@ -208,9 +208,9 @@ Generating the same n=30 corpus with the new multi-provider syntax:
 
 | Provider:Model | Pricing (per 1M input/output) | Notes |
 |----------------|-------------------------------|-------|
-| `claude-sonnet-4-6` (default) | $3 / $15 | Best quality, prompt caching |
-| `claude-opus-4-7` | $5 / $25 | Higher capability |
-| `claude-haiku-4-5` | $1 / $5 | Cheap Anthropic |
+| `claude-sonnet-5-5` (default) | $2 / $10 | Best quality, prompt caching |
+| `claude-opus-5-5` | $4 / $20 | Higher capability |
+| `claude-haiku-5-5` | $0.10 / $0.50 | Cheap Anthropic; the default judge |
 | `groq:llama-3.3-70b-versatile` | $0.59 / $0.79 | Llama 3.3 70B (Groq TPD limited on free tier) |
 | `groq:llama-3.1-8b-instant` | $0.05 / $0.08 | Smallest Llama (TPM-limited on free tier — 38-seed corpus may exceed) |
 | `groq:meta-llama/llama-4-scout-17b-16e-instruct` | $0.18 / $0.59 | Llama 4 Scout (recommended for Groq runs at free tier) |
@@ -327,7 +327,7 @@ prompt-genesis self-test \
   --target-system "You are a helpful assistant." \
   --seed corpus.json \
   --rounds 30 \
-  --model claude-sonnet-4-6 \
+  --model claude-sonnet-5-5 \
   --out result.json
 ```
 
@@ -372,7 +372,7 @@ const result = await selfTest({
   target: { kind: 'groq', model: 'llama-3.1-8b-instant', systemPrompt: 'You are a helpful assistant.' },
   seedCorpus,
   rounds: 30,
-  generatorModel: 'claude-sonnet-4-6',
+  generatorModel: 'claude-sonnet-5-5',
   // optional: judgeModel, ambiguousMaxRate, maxCostUsdPerGen, similarityThreshold, concurrency, onProgress
 });
 
@@ -403,7 +403,7 @@ const { attacks, rejects, cost, stoppedBy } = await generate({
   count: 25,
   categories: ['tool-coercion', 'indirect-injection'],
   maxCostUsd: 0.50,
-  model: 'claude-sonnet-4-6',
+  model: 'claude-sonnet-5-5',
   onProgress: ({ type, attack }) => console.log(type, attack?.id),
 });
 

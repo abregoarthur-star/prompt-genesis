@@ -17,13 +17,13 @@ Generate options:
   --hint "<text>"             Guidance to nudge the generator toward specific angles
   --max-cost-usd <n>          Stop when cost reaches this (default: 1.00)
   --similarity-threshold <n>  Reject candidates with >this similarity (0-1, default: 0.80)
-  --model <id>                Generator model. Bare ID = Anthropic ("claude-sonnet-4-6" default).
+  --model <id>                Generator model. Bare ID = Anthropic ("claude-sonnet-5-5" default).
                               Multi-provider syntax: "<provider>:<id>", e.g.:
-                                claude-sonnet-4-6                    (Anthropic, default)
+                                claude-sonnet-5-5                    (Anthropic, default)
                                 groq:llama-3.3-70b-versatile         (Groq, free tier)
                                 groq:llama-3.1-8b-instant            (Groq, smaller)
                               Judge stays on Anthropic regardless of generator provider.
-  --judge-model <id>          Quality-gate judge model (default: claude-haiku-4-5; always Anthropic)
+  --judge-model <id>          Quality-gate judge model (default: claude-haiku-5-5; always Anthropic)
   --skip-judge                Skip the quality gate (faster, risks malformed attacks)
   --target-defense <path>     Load a prompt-eval report JSON. Generated attacks will be
                               steered to break defenses the target already demonstrated —
@@ -99,7 +99,7 @@ async function runGenerate(args) {
 
   process.stderr.write(
     `prompt-genesis: generating ${count} attacks · ` +
-    `seed=${seedCorpus.length} · model=${opts.model || 'claude-sonnet-4-6'} · ` +
+    `seed=${seedCorpus.length} · model=${opts.model || 'claude-sonnet-5-5'} · ` +
     `budget=$${maxCostUsd.toFixed(2)} · dedup>=${similarityThreshold}\n`,
   );
   if (opts.targetDefense) {
@@ -206,7 +206,7 @@ async function runSelfTest(args) {
     `  target:    ${target.kind}${target.model ? ` (${target.model})` : ''}\n` +
     `  seed:      ${opts.seed} (${seedCorpus.length} attacks)\n` +
     `  rounds:    ${rounds} per mode\n` +
-    `  generator: ${opts.model || 'claude-sonnet-4-6'}\n` +
+    `  generator: ${opts.model || 'claude-sonnet-5-5'}\n` +
     `  ambiguous-max: ${ambiguousMaxRate} (over-steering gate)\n` +
     `  budget:    $${maxCostUsdPerGen.toFixed(2)} per generation phase\n` +
     `\nDecision criteria (locked):\n` +

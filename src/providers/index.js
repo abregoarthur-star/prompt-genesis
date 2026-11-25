@@ -12,7 +12,7 @@ import * as groq from './groq.js';
 const PROVIDERS = { anthropic, groq };
 
 // Parse "groq:llama-3.3-70b-versatile" → { provider: 'groq', model: 'llama-3.3-70b-versatile' }
-// Parse "claude-sonnet-4-6"           → { provider: 'anthropic', model: 'claude-sonnet-4-6' }
+// Parse "claude-sonnet-5-5"           → { provider: 'anthropic', model: 'claude-sonnet-5-5' }
 // Parse "openai/gpt-4o" via prefix    → not yet supported, throws clearly
 export function parseModelSpec(spec) {
   if (!spec || typeof spec !== 'string') {
